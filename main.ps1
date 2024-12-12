@@ -19,33 +19,13 @@ function Test-SecureBoot {
                 Write-Host "`n[-] Secure Boot is ON." -ForegroundColor Green
             } else {
                 Write-Host "`n[-] Secure Boot is OFF." -ForegroundColor Red
+                $global:susData += "Secure Boot is OFF."
             }
         } else {
             Write-Host "`n[-] Secure Boot not available on this system." -ForegroundColor Yellow
         }
     } catch {
         Write-Host "`n[-] Unable to retrieve Secure Boot status: $_" -ForegroundColor Red
-    }
-}
-
-# Function to fetch OneDrive path from registry or environment variables
-function Get-OneDrivePath {
-    try {
-        $oneDrivePath = (Get-ItemProperty "HKCU:\Software\Microsoft\OneDrive" -Name "UserFolder").UserFolder
-        if (-not $oneDrivePath) {
-            Write-Warning "OneDrive path not found in registry. Attempting alternative detection..."
-            $envOneDrive = [System.IO.Path]::Combine($env:UserProfile, "OneDrive")
-            if (Test-Path $envOneDrive) {
-                $oneDrivePath = $envOneDrive
-                Write-Host "[-] OneDrive path detected using environment variable: $oneDrivePath" -ForegroundColor Green
-            } else {
-                Write-Error "Unable to find OneDrive path automatically."
-            }
-        }
-        return $oneDrivePath
-    } catch {
-        Write-Error "Unable to find OneDrive path: $_"
-        return $null
     }
 }
 
@@ -96,9 +76,10 @@ function Get-UbisoftProfilePaths {
     $uniqueUserNames = $allUserNames | Select-Object -Unique | Where-Object { $_ -match $uuidPattern }
 
     if ($uniqueUserNames.Count -eq 0) {
-        Write-Host "`nSkipping Stats.cc Search" -ForegroundColor Yellow
+        Write-Host "`n`nNo Ubi accounts found!`n`n" -ForegroundColor DarkRed -BackgroundColor Yellow
     } else {
-        Write-Host "`nR6 Usernames Detected. Summon Stats.cc? | (Y/N)"
+        $usernameCount = $uniqueUserNames.Count
+        Write-Host "`n$usernameCount R6 Accounts Detected. Summon Stats.cc? | (Y/n)"
         $userResponse = Read-Host
 
         if ($userResponse -eq "Y") {
@@ -130,8 +111,6 @@ function Find-SusFiles {
     if ($klarFiles.Count -gt 0) {
         $global:logEntries += "`n-----------------`nPossible Klar Files:`n"
         $global:logEntries += $klarFiles | Sort-Object
-        $global:KeyFiles += "`n-----------------`nnPossible Klar Files:`n"
-        $global:KeyFiles += $klarFiles | Sort-Object
     }
 
     $tempPath = [System.IO.Path]::Combine($env:UserProfile, "AppData\Local\Temp")
@@ -141,10 +120,9 @@ function Find-SusFiles {
     }
 
     if ($susFiles.Count -gt 0) {
-        $global:logEntries += "`n-----------------`nSus Files(Files with loader in their name):`n"
+        $global:logEntries += "`n-----------------`nSus Files:`n"
         $global:logEntries += $susFiles | Sort-Object
-        $global:KeyFiles += "`n-----------------`nSus Files(Files with loader in their name):`n"
-        $global:KeyFiles += $susFiles | Sort-Object
+        $global:logEntries += $global:susData | Sort-Object
     }
 }
 
@@ -179,8 +157,7 @@ function Get-ZipRarFiles {
 # Function to get registry key files
 function Get-RegistryKeyFiles {
     Write-Host " `n [-] Fetching" -ForegroundColor DarkMagenta -NoNewline; Write-Host " UserSettings" -ForegroundColor White -NoNewline; Write-Host " Entries " -ForegroundColor DarkMagenta
-    $global:KeyFiles += "`n-----------------`nBAMStateUserSettings:`n"
-    $global:KeyFiles += "THESE NEED TO BE MANUALLY CHECKED AND REMOVED AS NT AUTHORITY\SYSTEM." 
+    $global:KeyFiles += "`n-----------------`nBAMStateUserSettings:`n" #only removable by NT AUTHORITY\SYSTEM
     $loggedPaths = @{}
 
     $registryPath = "HKLM:\SYSTEM\CurrentControlSet\Services\bam\State\UserSettings"
@@ -240,16 +217,17 @@ function Get-RegistryKeyFiles {
 
 # Function to check Wi-Fi support
 function Test-WifiSupport {
-    # Get all physical network adapters, including hidden ones
-    $wifiAdapters = Get-NetAdapter -Name * -Physical -IncludeHidden | Where-Object { $_.InterfaceDescription -match "Wi-Fi" }
-
-    if ($wifiAdapters.Count -gt 0) {
-        Write-Host "[-] Wi-Fi Support Detected." -ForegroundColor Green
-        $wifiAdapters | ForEach-Object { Write-Host "    Adapter: $($_.InterfaceDescription) - Status: $($_.Status)" }
-        return $wifiAdapters
-    } else {
-        Write-Host "[-] No Wi-Fi adapters detected." -ForegroundColor Red
-        return $null
+    try {
+        $wifiAdapters = @(Get-NetAdapter -Name * -Physical -IncludeHidden | Where-Object { $_.InterfaceDescription -match "Wi-Fi" })
+        Start-Sleep -Seconds 1
+        if ($wifiAdapters.Count -gt 0) {
+            Write-Host "[-] Wi-Fi Support Detected." -ForegroundColor Green
+            $wifiAdapters | ForEach-Object { Write-Host "    Adapter: $($_.InterfaceDescription) - Status: $($_.Status)" }
+        } else {
+            Write-Host "[-] No Wi-Fi adapters detected." -ForegroundColor Red
+        }
+    } catch {
+        Write-Host "An error occurred: $_" -ForegroundColor Red
     }
 }
 
@@ -274,10 +252,10 @@ function Get-InstalledBrowsers {
     }
 
     if ($browsers.Count -gt 0) {
-        Write-Host "`n[+] Installed Browsers:`n"
+        Write-Host "[+] Installed Browsers:`n" -ForegroundColor Green
         $browsers | ForEach-Object { Write-Host "$($_.Browser)" }
     } else {
-        Write-Host "`n[-] No installed browsers detected." -ForegroundColor Red
+        Write-Host "[-] No installed browsers detected." -ForegroundColor Red
     }
 }
 
@@ -288,32 +266,40 @@ function Get-InstalledApplications {
         "Arbor",
         "Vivado"
         )
-    $installedApps = Get-WmiObject -Class Win32_Product
-    if ($installedApps.CounWt -gt 0) {
-        Write-Host "`n[+] Installed Applications:`n"
-        $installedApps | Where-Object { $_.Name -match $susApps -and $_.Name -notmatch "Update for" } | ForEach-Object { Write-Host $_.Name }
-        $global:logEntries += "`n-----------------`nInstalled Applications:`n"
-        $installedApps | Where-Object { $_.Name -notmatch "Update" -and $_.Name -notmatch "Windows" -and $_.Name -notmatch "Microsoft" } | ForEach-Object { $global:logEntries += $_.Name }
+
+        $installedApps = Get-ChildItem "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" |
+        Get-ItemProperty |
+        Where-Object { $null -ne $_.DisplayName } |
+        Select-Object DisplayName, DisplayVersion, Publisher, InstallDate
+    
+    if ($installedApps.Count -eq 0) {
+        Write-Host "[-] No installed applications detected."
     } else {
-        Write-Host "`n[-] No installed applications detected." -ForegroundColor Red
+        Write-Host "`n[+] Found $($installedApps.Count) installed applications." -ForegroundColor Green
+        foreach ($app in $installedApps) {
+            if ($susApps -contains $app.DisplayName) {
+                Write-Host "    [-] $app.DisplayName - $app.DisplayVersion" -ForegroundColor Red
+            }
+        }
     }
 }
 
 function Write-PrefetchFiles {
     Write-Host " [-] Fetching Last Ran Dates..." -ForegroundColor DarkMagenta
     $prefetchPath = "C:\Windows\Prefetch"
-    $pfFilesHeader = "n=======================n.pf files:n"
+    $pfFilesHeader = "=======================`n.pf files:`n"
 
     if (Test-Path $prefetchPath) {
         $pfFiles = Get-ChildItem -Path $prefetchPath -Filter *.pf -File
         if ($pfFiles.Count -gt 0) {
+            Write-Host "[-] Found $($pfFiles.Count) .pf files in the Prefetch folder." -ForegroundColor Green
             $global:logEntries += $pfFilesHeader
             $pfFiles | ForEach-Object {
                 $logEntry = "{0} | {1}" -f $_.Name, $_.LastWriteTime
                 $global:logEntries += "n" + $logEntry
             }
         } else {
-            Write-Host "No .pf files found in the Prefetch folder." -ForegroundColor Green
+            Write-Host "No .pf files found in the Prefetch folder." -ForegroundColor Red
         }
     } else {
         Write-Host "Prefetch folder not found." -ForegroundColor Red
@@ -322,18 +308,20 @@ function Write-PrefetchFiles {
 
 # Main execution flow
 function Main {
+    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
     $global:logEntries = @()
+    $global:susData = @()
     $desktopPath = [System.Environment]::GetFolderPath('Desktop')
     $logFilePath = Join-Path -Path $desktopPath -ChildPath "PcCheckLogs.txt"
 
     Write-Header
     Test-SecureBoot
-    Test-WifiSupport | Out-Null
+    Test-WifiSupport
     Get-InstalledBrowsers
     Get-InstalledApplications
     Get-ZipRarFiles
     Get-RegistryKeyFiles
-    Write-PrefetchFiles # fix this
+    Write-PrefetchFiles
     Find-SusFiles
 
 
@@ -347,8 +335,13 @@ function Main {
 
 #Make sure its running in admin mode.
 if(!([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) {
-    Start-Process powershell –verb runAs -ArgumentList "-NoExit -Command iex(iwr('https://raw.githubusercontent.com/Annabxlla/art/refs/heads/master/main.ps1'))"
-    Exit
+    if ($args -contains "-dev") {
+        $scriptPath = $MyInvocation.MyCommand.Path
+        Start-Process powershell -verb runAs -ArgumentList "-NoExit -Command $scriptPath"
+    } else {
+        Start-Process powershell -verb runAs -ArgumentList "-NoExit -Command iex(iwr('https://raw.githubusercontent.com/Annabxlla/art/refs/heads/master/main.ps1'))"
+    }
+        Exit
+} else {
+    Main
 }
-
-Main
