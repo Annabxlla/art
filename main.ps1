@@ -19,7 +19,7 @@ function Test-SecureBoot {
                 Write-Host "`n[-] Secure Boot is ON." -ForegroundColor Green
             } else {
                 Write-Host "`n[-] Secure Boot is OFF." -ForegroundColor Red
-                $global:susData += "Secure Boot is OFF."
+                $global:logEntries += "Secure Boot is OFF."
             }
         } else {
             Write-Host "`n[-] Secure Boot not available on this system." -ForegroundColor Yellow
@@ -115,29 +115,40 @@ function Find-SusFiles {
     }
 
     $klarFiles = @()
-    $klarFiles += Get-ChildItem -Path $env:UserProfile -File -Recurse | Where-Object { $_.Name -match "(?i)^[a-zA-Z0-9]{10}\.exe" }
-    if ($klarFiles.Count -gt 0) {
-        $global:logEntries += "`n-----------------`nPossible Klar Files:`n"
-        $global:logEntries += $klarFiles | Sort-Object
+    $klarFiles += Get-ChildItem -Path $env:UserProfile -File -Recurse | Where-Object { 
+        $_.Name -match "(?i)^[a-zA-Z0-9]{10}\.exe"  -and 
+        $_.Name -notmatch "jrunscript.exe"          -and 
+        $_.Name -notmatch "jwebserver.exe"          -and
+        $_.Name -notmatch "policytool.exe"          -and
+        $_.Name -notmatch "servertool.exe"          -or
+        $_.Name -match "(?i)^gc(\s\(\d+\))*\.exe$"  -or
+        $_.Name -match "(?i)^SKREECHWARE(\s\(\d+\))*\.exe$"
     }
+    
+    if ($klarFiles.Count -gt 0) {
+        $global:logEntries += "`n-----------------`nPossible Klar Files:"
+        $klarFiles | Sort-Object | ForEach-Object {
+            # Format the output as a single line
+            $global:logEntries += "$($_.FullName) | $($_.LastWriteTime)`n"
+        }
+    }
+    
 
     $tempPath = [System.IO.Path]::Combine($env:UserProfile, "AppData\Local\Temp")
-    $tempFiles = Get-ChildItem -Path $tempPath -File -Recurse | Where-Object { $_.Name -match "^.{1,6}\.exe" }
+    $tempFiles = Get-ChildItem -Path $tempPath -File -Recurse | Where-Object { $_.Name -match "^.{1,6}\.exe" -and $_.Name -notmatch "dump64\.exe" -and $_.Name -notmatch "setup\.exe" }
     foreach ($file in $tempFiles) {
         $susFiles += $file.FullName
     }
 
     if ($susFiles.Count -gt 0) {
-        $global:logEntries += "`n-----------------`nSus Files:`n"
+        $global:logEntries += "`n-----------------`nSus Files:"
         $global:logEntries += $susFiles | Sort-Object
-        $global:logEntries += $global:susData | Sort-Object
     }
 }
 
 # Function to get Zip and Rar files
 function Get-ZipRarFiles {
     Write-Host " [-] Finding .zip and .rar files. Please wait..." -ForegroundColor DarkMagenta
-    $global:KeyFiles += "`n-----------------`nZip/Rar Files:`n"
     $zipRarFiles = @()
     $searchPaths = @($env:UserProfile, "$env:UserProfile\Downloads")
     $uniquePaths = @{}
@@ -149,23 +160,17 @@ function Get-ZipRarFiles {
                 if (-not $uniquePaths.ContainsKey($file.FullName) -and $file.FullName -notmatch "minecraft" -and $file.FullName -notmatch "node_modules" -and $file.FullName -notmatch "go") {
                     $uniquePaths[$file.FullName] = $true
                     $zipRarFiles += $file
-                    $global:KeyFiles += $file.FullName
+                    $global:logEntries += $file.FullName
                 }
             }
         }
-    }
-
-    if ($zipRarFiles.Count -gt 0) {
-        $global:logEntries += "`n-----------------"
-        $global:logEntries += "`nFound .zip and .rar files:"
-        $zipRarFiles | ForEach-Object { $global:logEntries += "`n" + $_.FullName }
     }
 }
 
 # Function to get registry key files
 function Get-RegistryKeyFiles {
-    Write-Host " `n [-] Fetching" -ForegroundColor DarkMagenta -NoNewline; Write-Host " UserSettings" -ForegroundColor White -NoNewline; Write-Host " Entries " -ForegroundColor DarkMagenta
-    $global:KeyFiles += "`n-----------------`nBAMStateUserSettings:`n" #only removable by NT AUTHORITY\SYSTEM
+    Write-Host " [-] Fetching" -ForegroundColor DarkMagenta -NoNewline; Write-Host " UserSettings" -ForegroundColor White -NoNewline; Write-Host " Entries " -ForegroundColor DarkMagenta
+    $global:logEntries += "-----------------`nBAMStateUserSettings:`n"
     $loggedPaths = @{}
 
     $registryPath = "HKLM:\SYSTEM\CurrentControlSet\Services\bam\State\UserSettings"
@@ -173,13 +178,11 @@ function Get-RegistryKeyFiles {
 
     if ($userSettings) {
         foreach ($setting in $userSettings) {
-            $global:logEntries += "`n$($setting.PSPath)"
             $items = Get-ItemProperty -Path $setting.PSPath | Select-Object -Property *
             foreach ($item in $items.PSObject.Properties) {
                 if (($item.Name -match "exe" -or $item.Name -match ".rar") -and -not $loggedPaths.ContainsKey($item.Name) -and $item.Name -notmatch "FileSyncConfig.exe|OutlookForWindows" -and $item.Name -notmatch "ASUS|Overwolf|WindowsApps") {
-                    $global:logEntries += "`n" + (Format-Output $item.Name $item.Value)
+                    $global:logEntries += (Format-Output $item.Name $item.Value)
                     $loggedPaths[$item.Name] = $true
-                    $global:KeyFiles += "`n" + $item.Name
                 }
             }
         }
@@ -188,11 +191,11 @@ function Get-RegistryKeyFiles {
     }
 
     Write-Host " [-] Fetching" -ForegroundColor DarkMagenta -NoNewline; Write-Host " Compatibility Assistant" -ForegroundColor White -NoNewline; Write-Host " Entries" -ForegroundColor DarkMagenta
-    $compatRegistryPath = "HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Compatibility Assistant\Store"
+    $compatRegistryPath = "HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Compatibility Assistant\Store" 
     $compatEntries = Get-ItemProperty -Path $compatRegistryPath
     $compatEntries.PSObject.Properties | ForEach-Object {
-        if (($_.Name -match "exe" -or $_.Name -match ".rar") -and -not $loggedPaths.ContainsKey($_.Name) -and $_.Name -notmatch "FileSyncConfig.exe|OutlookForWindows") {
-            $global:logEntries += "`n" + (Format-Output $_.Name $_.Value)
+        if (($_.Name -match "exe" -or $_.Name -match ".rar") -and -not $loggedPaths.ContainsKey($_.Name) -and $_.Name -notmatch "FileSyncConfig.exe|OutlookForWindows" -and $_.Name -notmatch "ASUS|Overwolf|WindowsApps") {
+            $global:logEntries += (Format-Output $_.Name $_.Value)
             $loggedPaths[$_.Name] = $true
         }
     }
@@ -202,8 +205,8 @@ function Get-RegistryKeyFiles {
     if (Test-Path $newRegistryPath) {
         $newEntries = Get-ItemProperty -Path $newRegistryPath
         $newEntries.PSObject.Properties | ForEach-Object {
-            if (($_.Name -match "exe" -or $_.Name -match ".rar") -and -not $loggedPaths.ContainsKey($_.Name) -and $_.Name -notmatch "FileSyncConfig.exe|OutlookForWindows") {
-                $global:logEntries += "`n" + (Format-Output $_.Name $_.Value)
+            if (($_.Name -match "exe" -or $_.Name -match ".rar") -and -not $loggedPaths.ContainsKey($_.Name) -and $_.Name -notmatch "FileSyncConfig.exe|OutlookForWindows" -and $_.Name -notmatch "ASUS|Overwolf|WindowsApps") {
+                $global:logEntries += (Format-Output $_.Name $_.Value)
                 $loggedPaths[$_.Name] = $true
             }
         }
@@ -214,8 +217,8 @@ function Get-RegistryKeyFiles {
     if (Test-Path $muiCachePath) {
         $muiCacheEntries = Get-ChildItem -Path $muiCachePath
         $muiCacheEntries.PSObject.Properties | ForEach-Object {
-            if (($_.Name -match "exe" -or $_.Name -match ".rar") -and -not $loggedPaths.ContainsKey($_.Name) -and $_.Name -notmatch "FileSyncConfig.exe|OutlookForWindows") {
-                $global:logEntries += "`n" + (Format-Output $_.Name $_.Value)
+            if (($_.Name -match "exe" -or $_.Name -match ".rar") -and -not $loggedPaths.ContainsKey($_.Name) -and $_.Name -notmatch "FileSyncConfig.exe|OutlookForWindows" -and $_.Name -notmatch "ASUS|Overwolf|WindowsApps") {
+                $global:logEntries += (Format-Output $_.Name $_.Value)
                 $loggedPaths[$_.Name] = $true
             }
         }
@@ -301,10 +304,12 @@ function Write-PrefetchFiles {
         $pfFiles = Get-ChildItem -Path $prefetchPath -Filter *.pf -File
         if ($pfFiles.Count -gt 0) {
             Write-Host "[-] Found $($pfFiles.Count) .pf files in the Prefetch folder." -ForegroundColor Green
+            # Append the header once
             $global:logEntries += $pfFilesHeader
             $pfFiles | ForEach-Object {
                 $logEntry = "{0} | {1}" -f $_.Name, $_.LastWriteTime
-                $global:logEntries += "n" + $logEntry
+                # Append each log entry
+                $global:logEntries += "$logEntry`n"
             }
         } else {
             Write-Host "No .pf files found in the Prefetch folder." -ForegroundColor Red
@@ -318,7 +323,6 @@ function Write-PrefetchFiles {
 function Main {
     Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
     $global:logEntries = @()
-    $global:susData = @()
     $desktopPath = [System.Environment]::GetFolderPath('Desktop')
     $logFilePath = Join-Path -Path $desktopPath -ChildPath "PcCheckLogs.txt"
 
@@ -332,13 +336,13 @@ function Main {
     Write-PrefetchFiles
     Find-SusFiles
 
-
     $global:logEntries | Out-File $logFilePath -Encoding utf8
     Write-Host " Log file created: $logFilePath"
     Get-Content $logFilePath | Set-Clipboard
     Write-Host " Log file copied to clipboard."
     Get-UbisoftProfilePaths
 
+    pause
 }
 
 #Make sure its running in admin mode.
