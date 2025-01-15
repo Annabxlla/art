@@ -2,6 +2,11 @@
     $logDir = "C:/temp/pccheck/logs"
     $combinedFile = [System.IO.Path]::Combine([System.Environment]::GetFolderPath('Desktop'), "PcCheckLogs.md")
 
+    # Delete the existing combined log file if it exists
+    if (Test-Path $combinedFile) {
+        Remove-Item $combinedFile -Force
+    }
+
     # Ensure the 'logs' directory exists (silent creation)
     if (-not (Test-Path $logDir)) {
         New-Item -ItemType Directory -Path $logDir | Out-Null

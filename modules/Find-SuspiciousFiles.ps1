@@ -27,16 +27,16 @@
     $filteredLines = Select-String -Path $combinedFile -Pattern $susPattern
 
     # Append suspicious files entries to the combined Markdown file
-    if ($filteredLines.Count -gt 0 -or $susFiles.Count -gt 0) {
-        Write-Host "[+] Found suspicious files. Appending to the combined log..." -ForegroundColor Red
+    if ($filteredLines.Count -gt 0) {
+        Write-Host "[+] Found suspicious files. Appending to the combined log..." -ForegroundColor Yellow
         $susHeader = "## Suspicious Files Found`n`n"
-
-        # Combine filtered lines from the combined log and suspicious file paths
         $susData = $filteredLines | ForEach-Object { $_.Line }
-        $susData += $susFiles | ForEach-Object { $_.FullName }
 
-        # Append the header and data to the combined Markdown file
-        $susHeader + $susData | Out-File -Append -FilePath $combinedFile
+        # Append the header
+        $susHeader | Out-File -Append -FilePath $combinedFile
+
+        # Append each suspicious file on a new line
+        $susData | ForEach-Object { "$_" | Out-File -Append -FilePath $combinedFile }
     } else {
         Write-Host "[-] No suspicious files found." -ForegroundColor Green
     }

