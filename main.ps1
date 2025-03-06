@@ -8,6 +8,8 @@ function Invoke-Modules {
         'Get-PrefetchFiles.ps1',
         'Get-ZipRarFiles.ps1',
         'Get-RegistryKeyFiles.ps1',
+        'Get-RecentFiles.ps1',
+        'Get-Jumplists.ps1',
         'Join-Logs.ps1',
         'Find-SuspiciousFiles.ps1',
         'Get-UbisoftProfiles.ps1'
